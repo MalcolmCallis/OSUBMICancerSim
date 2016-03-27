@@ -1,10 +1,13 @@
 package cancersimulation;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -64,9 +67,6 @@ public final class CancerSimulation{
         if (s != 0) {
             s = Math.sqrt(-2 * Math.log(s) / s);
         }
-        if (Double.isNaN(v1 * s)){
-            int x = 0;
-        }
         return v1 * s;
     }
     
@@ -89,13 +89,6 @@ public final class CancerSimulation{
         }
   
     
-    private static void distance(boolean sampleData[][], double[] distances, int mutatedGene, double[] sampleMutationFrequency){
-       
-        //hamming distance
-        for (int sample = 0; sample < sampleData.length; sample++){
-            distances[sample] += sampleData[sample][mutatedGene]? sampleMutationFrequency[sample] - 1:sampleMutationFrequency[sample];
-        }
-    }
      
     private static double[] mScore(boolean sampleData[][], double[] geneMutationProbabilities, boolean[] genome, int mutationCount, int[] sampleDataMutationCounts, int genes, int samples){
       
@@ -254,27 +247,6 @@ public final class CancerSimulation{
         return ret;
     }
     
-    private static double[] similarity(boolean sampleData[][], List<Integer> mutatedGenes, double[] sampleMutationFrequency, double sampleMutationRate, int mutatedGene, int genes, int samples, double simularityConstant){
-        //obsolete function, not used
-        //compares how similar cell strains are based on comparing the observed to expected number of mutations
-        double[] ret = new double[samples];
-        for (int sample = 0; sample < samples; sample++){
-            double expected = 0;
-            double observed = 0;
-            for (int gene = 0; gene < genes; gene++){
-                //if (gene != mutatedGene){
-                //double pExp = sampleData[sample][mutatedGene]? (sampleMutationFrequency[sample] * genes - 1.0) / (genes - 1.0) : (sampleMutationFrequency[sample] * genes) / (genes - 1.0)  ;
-                double pExp = sampleMutationFrequency[sample];
-                double pObs = sampleMutationRate;
-                expected += 1 - (pExp * pObs + (1 - pExp) * (1 - pObs));
-                observed += sampleData[sample][gene] == mutatedGenes.contains(gene)? 0 : 1;
-                //}
-            }
-            //ret[sample] = Math.pow((expected + .001) / (observed + .001),simularityConstant);
-            ret[sample] = Math.pow(observed / expected,simularityConstant);
-        }
-        return ret;
-    }
     
     public static double similarityTest(boolean testData[][], List<List<Integer>> simulatedClones){
         //average of the smallest distance between each sample int the test data and the simulated clones
@@ -316,67 +288,8 @@ public final class CancerSimulation{
         return average;
     }
    
-    private static void davesDistance(boolean sampleData[][], double[] distances, int mutatedGene, double[] sampleMutationNumber, double constant){
-       //distance metric using daves formula
-        
-        for (int sample = 0; sample < sampleData.length; sample++){
-            if (sampleData[sample][mutatedGene]){
-                //it gained a mutation that matches, distance decreases
-                distances[sample] -= (constant + 1) / sampleMutationNumber[sample];
-            } else {
-                //it gained a mutation that doesnt match, distance increases
-                distances[sample] += (1-constant) / sampleMutationNumber[sample];
-            }
-        }
-    }
-   
-    private static int[] absoluteDistance(boolean sampleData[][], List<Integer> mutations){
-       //simple hamming distance function
-        //calculate the distance an unmutated strain would be from all the samples
-        int[] distances = new int[sampleData.length];
-        //for each sample
-        for (int sample = 0; sample < sampleData.length; sample++){
-            distances[sample] = 0;
-            //add up all the mutations
-            for (int gene = 0; gene < sampleData[0].length; gene++){
-                if(sampleData[sample][gene] != mutations.contains(gene)){
-                    distances[sample]++;
-                }
-            }
-        }
-        return distances;
-    }
     
-    private static int[] absoluteDistanceTest(List<CellStrain> simulatedClones, boolean[] testSample){
-        //hamming distance function used to measure accuracy after simulation has ran
-        //calculate the distance an unmutated strain would be from all the samples
-        int[] distances = new int[simulatedClones.size()];
-        //for each sample
-        for (int sample = 0; sample < simulatedClones.size(); sample++){
-            distances[sample] = 0;
-            //add up all the mutations
-            for (int gene = 0; gene < testSample.length; gene++){
-                if (simulatedClones.get(sample).divisionRateHistory.contains(gene) != testSample[gene]){
-                    distances[sample]++;
-                }
-            }
-        }
-        return distances;
-    }
     
-    private static double[] initialDistance(boolean sampleData[][],double sampleMutationFrequency[]){
-        //calculate the distance an unmutated strain would be from all the samples
-        double[] distances = new double[sampleData.length];
-        //for each sample
-        for (int sample = 0; sample < sampleData.length; sample++){
-            distances[sample] = 0;
-            //add up all the mutations
-            for (int gene = 0; gene < sampleData[0].length; gene++){
-                distances[sample] += sampleData[sample][gene]? (1.0 - sampleMutationFrequency[sample]): 0;
-            }
-        }
-        return distances;
-    }
     
     private static double energy(double[] distances, boolean quadratic, double radius, double height){
         //calculates the total energy based on a normal kernal density approximation
@@ -593,27 +506,6 @@ public final class CancerSimulation{
         fw.close();
     }
     
-    private static void limitGrowth(Set<CellStrain> strains, Set<CellStrain> newStrains, double maxDivisionRate, long prevPopulation, long startingCells){
-        //limit the population growth to amount specified by user
-            //this simulates competition between cell strains
-            Set<CellStrain> remove = new HashSet<>();
-            final long population = newStrains.stream().parallel().mapToLong(strain -> strain.population).sum();
-            if (population > maxDivisionRate * prevPopulation && population > startingCells && strains.size() > 100){
-                newStrains.stream().parallel().forEach(strain -> {
-                    double newPop = strain.population * maxDivisionRate * prevPopulation / population;
-                    strain.population = (long) newPop;
-                    if (Math.random() < newPop % 1){
-                        strain.population++;
-                    }
-                    if (strain.population <= 0){
-                        remove.add(strain);
-                    }
-                });
-                remove.stream().forEach((strain) -> {
-                    newStrains.remove(strain);
-                });
-            }
-    }
     
     private static void calculateStatistics(Set<CellStrain> strains, int genes,  String genePath, double mutationRate, int generation, long startingCells, long runtime) throws IOException{
             
@@ -1477,10 +1369,9 @@ public final class CancerSimulation{
         return counts;
     }
     
-    public static Tuple run(long startingCells, long runtime, double mutationRate, int subdivisionsCount, double flowRate, int genes, double resistantRate, double sensitiveRate, boolean sequential, boolean smart, boolean matlab, long cutOff, boolean optimize) throws IOException, InterruptedException{
+    public static Tuple run(long startingCells, long runtime, double mutationRate, int subdivisionsCount, double flowRate, int genes, double resistantRate, double sensitiveRate, boolean sequential, boolean smart, int switchEvery, boolean matlab, long cutOff, boolean optimize) throws IOException, InterruptedException{
        
         
-        //genes = 4;
         
         //double alpha = .01;
         //double epsilon = 1;
@@ -1507,7 +1398,7 @@ public final class CancerSimulation{
             //drug 3
             {{{{1.0, 1.0}, {1.0, 1.0}},{{1.0, 1.0}, {1.0, 1.0}}},{{{nextNormal(sensitiveRate), nextNormal(resistantRate)}, {nextNormal(sensitiveRate), nextNormal(resistantRate)}},{{nextNormal(resistantRate), nextNormal(resistantRate)}, {nextNormal(resistantRate), nextNormal(resistantRate)}}}}
         };
-        double[] geneMutationProbabilities = {0,.3,.4,.3};
+        double[] geneMutationProbabilities = {0,.4,.3,.3};
     
         
         drugRegime = 0;
@@ -1521,33 +1412,37 @@ public final class CancerSimulation{
         Writer writer = new BufferedWriter( fw );
         boolean exists = true;
         
-        String name = "trialsSequential.csv";
-        
-        if (!sequential){
-            name = "trialsAlternating.csv";
-        } else if (smart){
-            name = "trialsSmart.csv";
+        File file2 = null;
+        Writer writer2 = null;
+        FileWriter fw2 = null;
+        if(!optimize){
+            String name = resistantRate + "," + sensitiveRate + "rates,flowRate=" + flowRate + "trialsSequential.csv";
+
+            if (!sequential){
+                name = resistantRate + "," + sensitiveRate + "rates,flowRate=" + flowRate + "trialsAlternating.csv";
+            } else if (smart){
+                name = resistantRate + "," + sensitiveRate + "rates,flowRate=" + flowRate + "trialsSmart.csv";
+            }
+
+
+            file2 = new File(name);  
+            if ( !file2.exists() ){
+                file2.createNewFile();
+                exists = false;
+            }
+            fw2 = new FileWriter(file2,true);
+            writer2 = new BufferedWriter( fw2 );
+            writer2.append("\n");
+            if (!exists)
+
+                if (sequential){
+                writer2.append("IM regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g), SU regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g),REGO regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g), time of progression (day), 500g tumor at (day), % resistant,divergenceDay\n");
+
+                } else {
+                writer2.append("IM regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g), SU/REGO regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g), time of progression (day), 500g tumor at (day), % resistant,divergenceDay\n");
+
+            }
         }
-        
-        
-        File file2 = new File(name);  
-        if ( !file2.exists() ){
-            file2.createNewFile();
-            exists = false;
-        }
-        FileWriter fw2 = new FileWriter(file2,true);
-        Writer writer2 = new BufferedWriter( fw2 );
-        writer2.append("\n");
-        if (!exists)
-            
-            if (sequential){
-            writer2.append("IM regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g), SU regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g),REGO regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g), time of progression (day), 500g tumor at (day), % resistant\n");
-           
-            } else {
-            writer2.append("IM regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g), SU/REGO regime begins (day), smallest tumor size (g), smallest at (day), tumor size at progression (g), time of progression (day), 500g tumor at (day), % resistant\n");
-        
-        }
-        
         /*
         
         //for working with kernal density approximation
@@ -1573,6 +1468,13 @@ public final class CancerSimulation{
         double nullFitness = observedExpectedRatioFitness(trainData, simulatedSampleData, genome, rho, 0, geneMutationProbabilities, sampleDataMutationCounts, genes, samples, alpha, epsilon);
        
         */
+        
+        
+        int genomeID = 1;
+        int generation = 0;
+        long prevPopulation = startingCells;
+        long startingMutated = Math.min(startingCells / subdivisionsCount, 10000);
+        long mutated = startingMutated;
         
         List<Set<CellStrain>> allStrains = new ArrayList<>();
         Set<CellStrain> strains = new HashSet<>();
@@ -1604,14 +1506,14 @@ public final class CancerSimulation{
                         List<Double> divisionRate2 = new ArrayList<>();
 
 
-                        divisionRate2.add(nextNormal(resistantRate));
+                        divisionRate2.add(fitness[0][1][0][0][0]);
 
                         List<Integer> times2 = new ArrayList<>();
                         times2.add(0);
-                        startingStrain2 = new CellStrain(divisionRate2,Math.min(startingCells / subdivisionsCount, 10000), genome2, times2, 1, x, y, z);
+                        startingStrain2 = new CellStrain(divisionRate2,startingMutated, genome2, times2, 1, x, y, z);
                         startingStrain2.genomeID = -1;
 
-                        startingStrain.population -= Math.min(startingCells / subdivisionsCount, 10000);
+                        startingStrain.population -= startingMutated;
                         strains.add(startingStrain2);
                         subdivisions.get(x).get(y).get(z).add(startingStrain2);
                     }
@@ -1622,33 +1524,32 @@ public final class CancerSimulation{
                 }
             }
         }
-        int genomeID = 1;
-        int generation = 0;
-        long prevPopulation = startingCells;
-        long mutated = Math.min(startingCells / subdivisionsCount, 10000);
         //geneInteractions( trainData, simulatedSampleData, genePath, genes, samples, geneMutationProbabilities, sampleDataMutationCounts, nullFitness, rho, alpha, epsilon);
         
         //window.setStopEnabled(true);
         //keep looping through generations until the simulation has timed out
-        
+        double divergenceDay = 0.0;
+        double difference = 9999.0;
         long lowestPopulation = mutated;
         int lowestGeneration = 0;
         int printed = 0;
         int halvingGen = 0;
         long halvingPop = 0;
         double predictedPop = (double) startingCells;
+        double doublingTime = 0.0;
         while (System.currentTimeMillis() - startTime < runtime && !stop && mutated > 0 && mutated < startingCells * .75) {
         //writer2.append("IM regime begins (week), smallest tumor size (g), smallest at (week), tumor size at progression (g), SU regime begins (week), smallest tumor size (g), smallest at (week), tumor size at progression (g), REG regime begins (week), smallest tumor size (g), smallest at (week), tumor size at progression (g), 100 g tumor at (week)\n");
         
             
             if (!sequential){
-            if (drugRegime == 2 && generation % 1 == 0){
-                drugRegime = 3;
-                regimeChange = true;
-            } else if (drugRegime == 3 && generation % 1 == 1){
-                drugRegime = 2;
-                regimeChange = true;
-            }
+                if (drugRegime == 2 && generation % (2 * switchEvery) == 0){
+                    drugRegime = 3;
+                    regimeChange = true;
+                } else if (drugRegime == 3 && generation % (2 * switchEvery) == switchEvery){
+                    drugRegime = 2;
+                    regimeChange = true;
+                }
+
             }
             
             if (mutated < lowestPopulation){
@@ -1657,37 +1558,52 @@ public final class CancerSimulation{
             }
             if (mutated > cutOff && drugRegime == 0){
                        
-                //reached 10g tumor
-                writer2.append(Double.toString(generation / 8.0) + ",");
+                //reached 100g tumor
+                if(!optimize)
+                writer2.append(Double.toString(generation) + ",");
                 lowestPopulation = mutated;
                 lowestGeneration = generation;
                 halvingGen = generation;
                 halvingPop = mutated;
                 drugRegime = 1;
                 regimeChange = true;
+                doublingTime = Math.log(2)*halvingGen/(Math.log(((double)halvingPop) / startingMutated));//1.267 * (generation - lowestGeneration);
+                    
                 
-            } else if (mutated > lowestPopulation * 1.728 && drugRegime > 0 && printed < 2){
+            } else if (mutated > lowestPopulation * 1.728 && mutated > 100000000 && drugRegime > 0 && printed < 2){
                 if (drugRegime == 1){
+                    
+                    divergenceDay = generation;
                     //calculate halving time
-                    double halvingTime = Math.log(.5) * (lowestGeneration - halvingGen) / Math.log( ((double)lowestPopulation) / halvingPop);
-                    System.out.println("Halving time: " + halvingTime);
+                    //double halvingTime = Math.log(.5) * (lowestGeneration - halvingGen) / Math.log( ((double)lowestPopulation) / halvingPop);
+                    double progressionTime = generation - halvingGen;
+                    System.out.println("Progression time: " + progressionTime);
                     //calculate doubling time
-                    double doublingTime = 1.278 * (generation - lowestGeneration);
+                    
                     System.out.println("Doubling time: " + doublingTime);
+                    
+                    
+                    //double doublingTime = halvingGen / (Math.log(halvingPop / startingMutated) / Math.log(2));
+                    //System.out.println("Doubling time: " + doublingTime);
                     if (optimize){
-                        return new Tuple(doublingTime,halvingTime);
+                        return new Tuple(doublingTime,progressionTime);
                     }
                 }
                 
+                if(!optimize){
                 writer2.append(Double.toString(lowestPopulation / 100000000.0) + ",");
                     
-                writer2.append(Double.toString(lowestGeneration / 8.0) + ",");
+                writer2.append(Double.toString(lowestGeneration) + ",");
                     
                 writer2.append(Double.toString(mutated / 100000000.0) + ",");
                 
-                writer2.append(Double.toString(generation / 8.0) + ",");
+                
+                writer2.append(Double.toString(generation) + ",");
+                
+                }
                 lowestPopulation = mutated;
                 lowestGeneration = generation;
+                
                 
                 if (sequential){
                     
@@ -1736,12 +1652,13 @@ public final class CancerSimulation{
                 
                     
                  
-            } else if (mutated > 5 * cutOff && printed > 1){
+            } else if (mutated > 5 * cutOff && printed > 1 && !optimize){
                        
-                //reached 50g tumor
-                writer2.append(Double.toString(generation / 8.0) + ",");
+                //reached 500g tumor
+                writer2.append(Double.toString(generation) + ",");
                 writer2.append(Double.toString(((double)(strains.stream().mapToLong(x -> (x.genome[3])? x.population : 0).sum())) /  mutated) + ",");
-
+                writer2.append(Double.toString(generation - divergenceDay) + ",");
+                difference = generation - divergenceDay;
                 stop = true;
                 
             } 
@@ -1749,13 +1666,7 @@ public final class CancerSimulation{
             if (regimeChange){
                 for(CellStrain strain : strains){
                     double divisionRate = fitness[drugRegime][strain.genome[0]? 1 :0][strain.genome[1]? 1 :0][strain.genome[2]? 1 :0][strain.genome[3]? 1 :0];
-                    /*
-                    for(int gene = 0; gene < genes; gene++){
-                        if (strain.genome[gene]){
-                            divisionRate += geneFitness[gene][drugRegime];
-                        }
-                    }
-                    */
+
                     
                     strain.divisionRateHistory.add(divisionRate);
                     
@@ -1784,7 +1695,7 @@ public final class CancerSimulation{
             final int generationf = generation;
             final long prevPopulationf = prevPopulation;
             final double predictedPopf = predictedPop;
-            //fgo through each strain
+            //go through each strain
             strains.stream().parallel().forEach((CellStrain strain) -> {
                 //calculate the new population for the strain
                 double cellDivisionRate = strain.divisionRateHistory.get(strain.divisionRateHistory.size() - 1);
@@ -1795,8 +1706,10 @@ public final class CancerSimulation{
                 double scalingFactor = subdivisions.get(strain.x).get(strain.y).get(strain.z).populationScalingFactor;
                 //use more accurate poisson distribution for small populations and the faster normal distributions for large populations
                 if (strain.population * cellDivisionRate>0 && strain.population <= 20 ){
-                    if (generationf % 40 == strain.geneTimes.get(strain.geneTimes.size() - 1) % 40){
-                    newPop =  2 * nextPoisson(strain.population * Math.pow(scalingFactor * cellDivisionRate, 40.0) / 2.0);
+                    //small pop
+                    if (generationf % 5 == strain.geneTimes.get(strain.geneTimes.size() - 1) % 5){
+                        //only calculate every 5 days
+                    newPop =  2 * nextPoisson(strain.population * Math.pow(scalingFactor * cellDivisionRate, 5.0) / 2.0);
                     } else {
                         newPop = strain.population;
                     }
@@ -1812,13 +1725,13 @@ public final class CancerSimulation{
                 }
                 strain.population = newPop;
                 
-                if (newPop > 0 && strain.genomeID != 0 && (oldPop > 20 || generationf % 40 == strain.geneTimes.get(strain.geneTimes.size() - 1) % 40)){
+                if (newPop > 0 && strain.genomeID != 0 && (oldPop > 20 || generationf % 5 == strain.geneTimes.get(strain.geneTimes.size() - 1) % 5)){
                     //calculate any mutations
                     double odds;
                     if (oldPop <= 20){
                         odds = Math.pow(1.0-mutationRate,newPop / 2.0);
                     } else {
-                        odds = Math.pow(1.0-mutationRate,(newPop - oldPop * 39.0/40.0) / 2.0);
+                        odds = Math.pow(1.0-mutationRate,(newPop - oldPop * 4.0/5.0) / 2.0);
                     }
                         if (strain.mutationCount < genes && Math.random() > odds){
                              
@@ -1848,15 +1761,7 @@ public final class CancerSimulation{
                             
                             newGenome[count - 1] = true;
                             
-                            /*
-                            int mutatedGene;
-                            do{
-                                mutatedGene = (int) (Math.random() * genes);
-                                
-                            } while (newGenome[mutatedGene]);
                             
-                            newGenome[mutatedGene] = true;
-                              */  
                             
                             //calculate the geneTimes for the new strain
                             List<Integer> newGeneTimes = new ArrayList<>(strain.geneTimes);
@@ -1869,10 +1774,6 @@ public final class CancerSimulation{
                             double newDivisionRate = 1 + .01 * Math.log(fitness/nullFitness);
                             */
                             
-                            /*
-                            double newDivisionRate = newDivisionRateHistory.get(newDivisionRateHistory.size() - 1);
-                            newDivisionRate += geneFitness[mutatedGene][drugRegime];
-                            */
                             
                             double newDivisionRate = fitness[drugRegime][newGenome[0]? 1 :0][newGenome[1]? 1 :0][newGenome[2]? 1 :0][newGenome[3]? 1 :0];
                             
@@ -1938,7 +1839,7 @@ public final class CancerSimulation{
         for (int x = 0; x < maxGridSize; x++){
             for (int y = 0; y < maxGridSize; y++){
                 for (int z = 0; z < maxGridSize; z++){
-                  subdivisions.get(x).get(y).get(z).populationScalingFactor = subdivisionPopulation / subdivisions.get(x).get(y).get(z).populationScalingFactor;
+                  subdivisions.get(x).get(y).get(z).populationScalingFactor = Math.min(1.0,subdivisionPopulation / subdivisions.get(x).get(y).get(z).populationScalingFactor);
                 }
             }
         }
@@ -1956,14 +1857,13 @@ public final class CancerSimulation{
         int y = 0;
         int brafSubdivisions = strains.stream().mapToInt(x -> (x.genomeID == -1)? 1 : 0).sum();
 
+        if (generation % 20 == 0){
+            int x = 0;
+        }
         //update the output to the gui
         //window.update(Integer.toString(generation),NumberFormat.getIntegerInstance().format(prevPopulation),Integer.toString(strains.size()),Long.toString((startTime + runtime - System.currentTimeMillis()) / 1000),(int)(1000.0 * (System.currentTimeMillis() - startTime) / runtime),maxDivRate,first, second, third, fourth, mutated);
     }
-            
-        if (strains.isEmpty()){
-            //window.done(0,"Population extinct",null);
-            return null;
-        }
+         
         //top3Genes(allStrains,genes,startingCells,generation);
         //calculates some statistics
         //calculateStatistics( strains, genes,"", mutationRate,generation, startingCells,runtime);
@@ -1975,10 +1875,15 @@ public final class CancerSimulation{
         writer.flush();
         writer.close();
         fw.close();  
-        writer2.flush();
-        writer2.close();
-        fw2.close();  
-        
+        if(!optimize){
+            writer2.flush();
+            writer2.close();
+            fw2.close();
+            
+        return new Tuple(difference,0.0);
+        } else {
+            return new Tuple(doublingTime,9999);
+        }
         /*
         Thread thread = new Thread(){
         @Override
@@ -1996,7 +1901,7 @@ public final class CancerSimulation{
         };
         thread.start();
         */
-        return null;
+        
     }
 
     public static void stop(){
@@ -2013,19 +1918,26 @@ public final class CancerSimulation{
     public static void main(String[] args) throws FileNotFoundException, IOException, InterruptedException {
         long startingCells = 100000000000l;
         long runtime = 600000;
-        double mutationRate = 0.000000005;
+        double mutationRate = 0.000000075;
         int subdivisionsCount = 1000;
-        double flowRate = .0003;
+        double flowRate = .1;
         int genes = 4;
-        double sensitiveRate = .9951;
-        double resistantRate = 1.04715;
-        int trials = 100;
+        /*for 1000 subdivisions*/
+        double sensitiveRate = .97;
+        double resistantRate = 1.0015;
+        
+        /*
+        double sensitiveRate = .998975;
+        double resistantRate = 1.0185;
+        */int trials = 100;
         boolean sequential = true;
         boolean smart = false;
+        int switchEvery = 3;
         boolean matlab = false;
         long cutOff = 10000000000L;
         boolean optimize = true;
-        if (args.length == 13){
+        boolean flip = false;
+        if (args.length == 15){
             startingCells = Long.parseLong(args[0]);
             runtime = Long.parseLong(args[1]);
             mutationRate = Double.parseDouble(args[2]);
@@ -2038,41 +1950,145 @@ public final class CancerSimulation{
             trials = Integer.parseInt(args[7]);
             sequential = Boolean.parseBoolean(args[8]);
             smart = Boolean.parseBoolean(args[9]);
-            matlab = Boolean.parseBoolean(args[10]);
-            cutOff = Long.parseLong(args[11]);
-            optimize = Boolean.parseBoolean(args[12]);
+            switchEvery = Integer.parseInt(args[10]);
+            matlab = Boolean.parseBoolean(args[11]);
+            cutOff = Long.parseLong(args[12]);
+            optimize = Boolean.parseBoolean(args[13]);
+            flip = Boolean.parseBoolean(args[14]);
         } 
         
         System.out.println("starting cells: " + startingCells + " runtime: " + runtime + " mutation rate: " + mutationRate + " subdivisions count" + subdivisionsCount + " flowrate: " + flowRate + " resistant rate: " + resistantRate + " sensitive rate: " + sensitiveRate + " trials: " + trials + " sequential: " + sequential + " matlab: " + matlab + " cutoff: " + cutOff);
         if (optimize){
-            for (int i = 0; i < trials; i++){
+            int resistanceHigh = 0;
+            int resistanceLow = 0;
+            int sensitiveHigh = 0;
+            int sensitiveLow = 0;
+            double resistanceTotal = 0.0;
+            double resistanceMean = 378.0;
+            boolean stop = false;
+            int inARow = 0;
+            double median = 0.0;
+            double[] sensitives = new double[100];
+            double[] resistives = new double[100];
+            double[] progressions = new double[100];
+                List<Double> divergences = new ArrayList<>();
+                
+                List<Double> sorted = new ArrayList<>();
+            for (int i = 0; i < 100 && !stop; i++){
             
-                Tuple t = run(startingCells, runtime, mutationRate, subdivisionsCount, flowRate, genes,resistantRate, sensitiveRate, sequential, smart, matlab, cutOff, optimize);
-                if (Math.abs(t.doublingTime - 172.0)/172.0 > Math.abs(t.halvingTime - 648.0) / 648.0){
-                    if (t.doublingTime > 172.0){
-                        resistantRate += .0001;
+                Tuple t = run(startingCells, runtime, mutationRate, subdivisionsCount, flowRate, genes,resistantRate, sensitiveRate, sequential, smart, switchEvery, matlab, cutOff, optimize);
+                resistanceTotal += t.doublingTime;
+                resistanceMean = resistanceMean * .8 + t.doublingTime * .2;//resistanceTotal / (i + 1);
+                divergences.add(t.halvingTime);
+                sensitives[i] = sensitiveRate;
+                progressions[i] = t.halvingTime;
+                resistives[i] = resistantRate;
+                if(divergences.size() > 5){
+                    //only use 5 most recent to calculate median
+                    divergences.remove(0);
+                }
+                sorted.clear();
+                sorted.addAll(divergences);
+                Collections.sort(sorted);
+                median = sorted.get(sorted.size() / 2);
+                double targetMean = 279.0;
+                double targetMedian = 720.0;
+                if (Math.abs(resistanceMean - targetMean)/targetMean > 0.1){// 
+                    if (resistanceMean > targetMean){
+                        resistantRate = 1.0 + (resistantRate - 1.0) * (1.0 + .5/ (1.0+i/5.0));
+                        resistanceLow++;
                     } else {
-                        resistantRate -= .0001;
+                        resistantRate = 1.0 + (resistantRate - 1.0) / (1.0 + .5/ (1.0+i/5.0));
+                        resistanceHigh++;
                     }
-                } else {
-                    if (t.halvingTime > 648.0) {
-                        sensitiveRate -= .000025;
+                    
+                }
+                if (Math.abs(median - targetMedian) / targetMedian > .1){
+                    if (median < targetMedian ^ flip) {
+                        sensitiveRate = Math.max(.75, 1.0 + (sensitiveRate - 1.0) * (1.0 + .5/ (1.0+i/5.0)));
+                        sensitiveHigh++;
                     } else {
-                        sensitiveRate += .000025;
+                        sensitiveRate = Math.max(.75, 1.0 + (sensitiveRate - 1.0) / (1.0 + .5/ (1.0+i/5.0)));
+                        sensitiveLow++;
                     }
                 }
+                
+                
+                if (i > 30 && Math.abs(resistanceMean - targetMean)/targetMean < 0.1  && Math.abs(median - targetMedian) / targetMedian < 0.1){
+                    inARow++;
+                    if (inARow == 5){
+                        stop = true;
+                    }
+                } else {
+                    inARow = Math.max(0, inARow - 1);
+                }
+                
+                            
             }
-        } else {
-        for (int i = 0; i < trials; i++){
+                //write the results to a file
+                File file = new File("flowRate=" + flowRate + "flip="+flip+".csv");  
+                if ( !file.exists() )
+                    file.createNewFile();
+                FileWriter fw = new FileWriter(file);
+                Writer writer = new BufferedWriter( fw );
+
+                writer.append(resistantRate + "," + sensitiveRate+"\n");
+                writer.append("Average Doubling time, " + resistanceMean + ", Median time to progression, "+ median);
+                writer.flush();
+                writer.close();
+                fw.close();
+        
+            } else {
             
-        long startTime = System.currentTimeMillis();
-        run(startingCells, runtime, mutationRate, subdivisionsCount, flowRate, genes,resistantRate, sensitiveRate, sequential, smart, matlab, cutOff, optimize);
-        System.out.println(sequential + " in " + (System.currentTimeMillis() - startTime) + " milliseconds.");
-        }
-        }
+                //read in rates
+            
+                
+                List<String> lines = Files.readAllLines(Paths.get("flowRate=" + flowRate + ".csv"), StandardCharsets.UTF_8);
+                String[] rates = lines.get(0).split(",");
+                resistantRate = Double.parseDouble(rates[0]);
+                sensitiveRate = Double.parseDouble(rates[1]);
+            
+                List<Double> divergences = new ArrayList<>();
+                for (int i = 0; i < trials; i++){
+
+                long startTime = System.currentTimeMillis();
+                Tuple t;
+                do {
+                t = run(startingCells, runtime, mutationRate, subdivisionsCount, flowRate, genes,resistantRate, sensitiveRate, sequential, smart, switchEvery, matlab, cutOff, optimize);
+                divergences.add(t.doublingTime);
+                } while (t.doublingTime == 0.0);
+
+                System.out.println(sequential + " in " + (System.currentTimeMillis() - startTime) + " milliseconds.");
+                }
+                Collections.sort(divergences);
+                double median = divergences.get(divergences.size() / 2);
+
+
+                String name = resistantRate + "," + sensitiveRate + "rates,flowRate=" + flowRate + "trialsSequential.csv";
+
+                if (!sequential){
+                    name = resistantRate + "," + sensitiveRate + "rates,flowRate=" + flowRate + "trialsAlternating.csv";
+                } else if (smart){
+                    name = resistantRate + "," + sensitiveRate + "rates,flowRate=" + flowRate + "trialsSmart.csv";
+                }
+                // File (or directory) with old name
+                File file = new File(name);
+
+                // File (or directory) with new name
+                File file2 = new File("median=" + median + "," + name);
+
+                if (file2.exists())
+                   throw new java.io.IOException("file exists");
+
+                // Rename file (or directory)
+                boolean success = file.renameTo(file2);
+
+
+
+
         //window.setVisible(true);
         //window.showBar();
-        
+        }
     }
 
 
