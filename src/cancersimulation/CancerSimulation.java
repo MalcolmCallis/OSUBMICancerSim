@@ -2026,7 +2026,7 @@ public final class CancerSimulation{
                             
             }
                 //write the results to a file
-                File file = new File("flowRate=" + flowRate + "flip="+flip+".csv");  
+                File file = new File("flowRate=" + flowRate + ".csv");  
                 if ( !file.exists() )
                     file.createNewFile();
                 FileWriter fw = new FileWriter(file);
